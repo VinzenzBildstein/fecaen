@@ -1,7 +1,4 @@
-extern "C" {
 #include "CAENComm.h"
-}
-
 #include "CaenDigitizer.hh"
 
 #include <iostream>

@@ -18,10 +18,6 @@
 #define STRING_LEN      256 // typical length for temporary strings
 #define MAX_EVT_SIZE 4000000 // was originally 500000 (max is 4194304)
 
-#ifdef __cplusplus
-extern "C" {
-#endif
-
 char fename[STRING_LEN]="fecaen";
 
 /////////////////////////  Midas Variables ////////////////////////////////////
@@ -57,15 +53,8 @@ EQUIPMENT equipment[] = {
    {""}
 };
 ////////////////////////////////////////////////////////////////////////////
-#ifdef __cplusplus
-}
-#endif
 
 HNDLE hSet;
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 int interrupt_configure(INT cmd, INT source, PTYPE adr){ return SUCCESS; }
 
@@ -111,15 +100,8 @@ int end_of_run(int run_number, char *error)
 
    return SUCCESS;
 }
-#ifdef __cplusplus
-}
-#endif
 
 /* test/count mode is used to determine poll timing */
-
-#ifdef __cplusplus
-extern "C" {
-#endif
 
 INT poll_event(INT source, INT count, BOOL test)
 {
@@ -160,7 +142,4 @@ int read_caen_event(char *pevent, int off)
 
    return bk_size(pevent);
 }
-#ifdef __cplusplus
-}
-#endif
 
