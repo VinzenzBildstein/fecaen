@@ -1,11 +1,11 @@
 # Makefile
 # $Id$
 
-LIBS = -lm -lz -lutil -lpthread -lCAENComm -lCAENVME -lCAENDigitizer -lrt
+LIBS = -lm -lz -lutil -lpthread -lCAENDigitizer -lrt
 
 DRV_DIR         = $(MIDASSYS)/drivers
 INC_DIR         = $(MIDASSYS)/include
-LIB_DIR         = $(MIDASSYS)/lib
+LIB_DIR         = $(MIDASSYS)/linux/lib
 
 # MIDAS library
 MIDASLIBS = $(LIB_DIR)/libmidas.a
@@ -20,12 +20,6 @@ endif
 OSFLAGS  = -DOS_LINUX -Dextname
 CFLAGS   = -g -Wall -Wuninitialized -I$(INC_DIR) -I$(DRV_DIR) -I$(VMICHOME)/include -I.
 CXXFLAGS = -std=c++0x $(CFLAGS) 
-
-# use root if it's available
-ifneq ($(ROOTSYS),)
-	CXXFLAGS += -DUSE_TENV -I$(shell root-config --cflags)
-	ROOTLIBS = $(shell root-config --libs)
-endif
 
 MODULES = $(LIB_DIR)/mfe.o
 

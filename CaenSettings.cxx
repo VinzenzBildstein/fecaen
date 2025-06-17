@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <iomanip>
+#include <curses.h>
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
@@ -18,7 +19,6 @@
 #include "CaenOdb.h"
 
 // this assumes that the right hand side is the template!!!
-//PSD settings
 bool operator==(const CAEN_DGTZ_DPP_PSD_Params_t& lh, const CAEN_DGTZ_DPP_PSD_Params_t& rh)
 {
 	for(int i = 0; i < MAX_DPP_PSD_CHANNEL_SIZE; ++i) {
@@ -259,6 +259,7 @@ bool operator==(const ChannelSettings& lh, const ChannelSettings& rh)
 			  lh.fEnableCfd             == rh.fEnableCfd &&
 			  lh.fCfdParameters         == rh.fCfdParameters &&
 			  lh.fEnableCoinc           == rh.fEnableCoinc &&
+			  lh.fEnableCoincTrig       == rh.fEnableCoincTrig &&
 			  lh.fEnableBaseline        == rh.fEnableBaseline &&
 			  lh.fCoincWindow           == rh.fCoincWindow &&
 			  lh.fCoincLatency          == rh.fCoincLatency &&
@@ -842,14 +843,6 @@ bool operator!=(const BoardSettings& lh, const BoardSettings& rh)
 
 CaenSettings::CaenSettings(bool debug)
 {
-	fNumberOfBoards = 0;
- 	fNumberOfChannels = 0;
-	fUseExternalClock = false;
-
-	fBufferSize = 0;
-
-	fRawOutput = false;
-
 	fDebug = debug;
 }
 
