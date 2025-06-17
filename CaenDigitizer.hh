@@ -43,9 +43,6 @@ private:
 	// raw readout data
 	std::vector<char*>    fBuffer; 
 	std::vector<uint32_t> fBufferSize;
-	// DPP events
-	//std::vector<CAEN_DGTZ_DPP_PSD_Event_t**> fEvents;
-	//std::vector<std::vector<uint32_t> >      fNofEvents;
 	// waveforms
 	std::vector<CAEN_DGTZ_DPP_PSD_Waveforms_t*> fWaveforms;
 
