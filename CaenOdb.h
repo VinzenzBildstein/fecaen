@@ -118,7 +118,7 @@ typedef struct {
 	"Enable Baseline = BOOL : 0",\
 	"Coincidence window = WORD : 2",\
 	"Coincidence latency = WORD : 0",\
-	"Input range = BOOL : 0",\
+	"Input range = BOOL : n",\
 	"Enable zero suppression = BOOL : 0",\
 	"Charge threshold = WORD : 0",\
 	"Threshold = WORD : 50",\

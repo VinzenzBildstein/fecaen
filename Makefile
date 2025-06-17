@@ -1,7 +1,7 @@
 # Makefile
 # $Id$
 
-LIBS = -lm -lz -lutil -lpthread -lCAENComm -lCAENVME -lCAENDigitizer -lrt
+LIBS = -lm -lz -lutil -lpthread -lCAENDigitizer -lrt
 
 DRV_DIR         = $(MIDASSYS)/drivers
 INC_DIR         = $(MIDASSYS)/include
@@ -21,20 +21,14 @@ OSFLAGS  = -DOS_LINUX -Dextname
 CFLAGS   = -g -Wall -Wuninitialized -I$(INC_DIR) -I$(DRV_DIR) -I$(VMICHOME)/include -I.
 CXXFLAGS = -std=c++0x $(CFLAGS) 
 
-# use root if it's available
-ifneq ($(ROOTSYS),)
-	CXXFLAGS += -DUSE_TENV -I$(shell root-config --cflags)
-	ROOTLIBS = $(shell root-config --libs)
-endif
-
 MODULES = $(LIB_DIR)/mfe.o
 
-all: fecaen 
+all: fecaen WriteToOdb
 
 fecaen: $(MIDASLIBS) fecaen.o $(MODULES) CaenSettings.o CaenDigitizer.o
 	$(CXX) -o $@ $(CXXFLAGS) $(OSFLAGS) $^ $(MIDASLIBS) $(ROOTLIBS) $(LIBS)
 
-%: %.cc $(MIDASLIBS) CaenSettings.o
+%: %.cxx $(MIDASLIBS) CaenSettings.o
 	$(CXX) -o $@ $(CXXFLAGS) $(OSFLAGS) $^ $(MIDASLIBS) $(ROOTLIBS) $(LIBS)
 
 %.o: %.c %.h

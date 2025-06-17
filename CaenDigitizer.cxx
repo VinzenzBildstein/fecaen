@@ -30,9 +30,8 @@ std::string format(const std::string& format, ...)
 }
 
 CaenDigitizer::CaenDigitizer(HNDLE hDB, bool debug)
-	: fDebug(debug), fSetupDone(false)
-{ 
-	fSettings = new CaenSettings(fDebug);
+	: fSettings(new CaenSettings(debug)), fDebug(debug), fSetupDone(false)
+{
 	if(fDebug) std::cout<<"Using ODB handle "<<hDB<<std::endl;
 	// only setup digitizers now if we were successful in reading the settings from the ODB
 	if(fSettings->ReadOdb(hDB)) Setup();
@@ -52,9 +51,9 @@ void CaenDigitizer::Setup()
 			fDevice.resize(fSettings->NumberOfBoards(), -1);
 			fFirmwareVersion.resize(fSettings->NumberOfBoards(), -1);
 			fFirmwareType.resize(fSettings->NumberOfBoards(), EFirmware::kPSD);
-			//fBuffer.resize(fSettings->NumberOfBoards(), NULL);
-			//fBufferSize.resize(fSettings->NumberOfBoards(), 0);
-			//fWaveforms.resize(fSettings->NumberOfBoards(), NULL);
+			fBuffer.resize(fSettings->NumberOfBoards(), NULL);
+			fBufferSize.resize(fSettings->NumberOfBoards(), 0);
+			fWaveforms.resize(fSettings->NumberOfBoards(), NULL);
 			fNofEvents.resize(fSettings->NumberOfBoards(), 0);
 			fLastNofEvents.resize(fSettings->NumberOfBoards(), 0);
 			fReadError.resize(fSettings->NumberOfBoards(), 0);
@@ -66,12 +65,16 @@ void CaenDigitizer::Setup()
 	for(int b = 0; b < fSettings->NumberOfBoards(); ++b) {
 		if(fHandle[b] == -1 || fPort[b] != fSettings->PortNumber(b) || fDevice[b] != fSettings->DeviceNumber(b)) {
 			if(fDebug) std::cout<<"setting up board "<<b<<std::endl;
+			if(fHandle[b] != -1) {
+				// board was already opened, so we should close it first (but we don't really care if this succeeds ...)
+				CAEN_DGTZ_CloseDigitizer(fHandle[b]);
+			}
 			// open digitizers
 			errorCode = CAEN_DGTZ_OpenDigitizer(fSettings->LinkType(b), fSettings->PortNumber(b), fSettings->DeviceNumber(b), fSettings->VmeBaseAddress(b), &fHandle[b]);
 			fPort[b] = fSettings->PortNumber(b);
 			fDevice[b] = fSettings->DeviceNumber(b);
 			if(errorCode != 0) {
-				throw std::runtime_error(format("Error %d when opening %d. digitizer using port %d, device %d", errorCode, b, fPort[b], fDevice[b]));
+			  throw std::runtime_error(format("Error %d when opening board %d of %d. Communication problem for digitizer using port %d, device %d. Check hardware or settings.", errorCode, b, fSettings->NumberOfBoards(), fPort[b], fDevice[b]));
 			}
 			if(fDebug) std::cout<<"got handle "<<fHandle[b]<<" for board "<<b<<std::endl;
 			// get digitizer info
@@ -107,35 +110,31 @@ void CaenDigitizer::Setup()
 		} else if(fFirmwareType[b] == EFirmware::kPHA) {
 			ProgramPhaDigitizer(b);
 		}
-		if(fDebug) std::cout<<"done with programming board "<<b<<std::endl;
-	} // for(int b = 0; b < fSettings->NumberOfBoards(); ++b)
 
-	// find out the max size needed for the buffers
-	fMaxBufferSize = 0;
-	for(int b = 0; b < fSettings->NumberOfBoards(); ++b) {
-		// we don't really need to remember how many bytes have been allocated, so we use fBufferSize here
+		// we don't really need to know how many bytes have been allocated, so we use fBufferSize here
+		free(fBuffer[b]);
 		//fBuffer[b] = static_cast<char*>(malloc(100*6504464));
 		//1638416 bytes are allocated by CAEN_DGTZ_MallocReadoutBuffer (2 channels, 192 samples each)
 		//changing this to 8 channels changed the number to 6504464
-		if(fDebug) std::cout<<fHandle[b]<<": trying to allocate memory for readout buffer "<<static_cast<void*>(fBuffer)<<std::endl;
-		errorCode = CAEN_DGTZ_MallocReadoutBuffer(fHandle[b], &fBuffer, &fBufferSize);
+		if(fDebug) std::cout<<fHandle[b]<<"/"<<fBuffer.size()<<": trying to allocate memory for readout buffer "<<static_cast<void*>(fBuffer[b])<<std::endl;
+		errorCode = CAEN_DGTZ_MallocReadoutBuffer(fHandle[b], &fBuffer[b], &fBufferSize[b]);
 		if(errorCode != 0) {
 			CAEN_DGTZ_CloseDigitizer(fHandle[b]);
 			throw std::runtime_error(format("Error %d when allocating readout buffer", errorCode));
 		}
-		if(fBufferSize > fMaxBufferSize) {
-			if(fMaxBufferSize != 0) {
-				std::cout<<"found board "<<b<<" which needs "<<fBufferSize<<" bytes instead of "<<fMaxBufferSize<<std::endl;
-			}
-			fMaxBufferSize = fBufferSize;
+		if(fDebug) std::cout<<"allocated "<<fBufferSize[0]<<" bytes of buffer for board "<<b<<std::endl;
+#ifdef USE_WAVEFORMS
+		// allocate waveforms, again not caring how many bytes have been allocated
+		uint32_t size;
+		free(fWaveforms[b]);
+		errorCode = CAEN_DGTZ_MallocDPPWaveforms(fHandle[b], reinterpret_cast<void**>(&(fWaveforms[b])), &size);
+		if(errorCode != 0) {
+			CAEN_DGTZ_CloseDigitizer(fHandle[b]);
+			throw std::runtime_error(format("Error %d when allocating DPP waveforms", errorCode));
 		}
-		if(fDebug) std::cout<<"allocated "<<fBufferSize<<" bytes of buffer for board "<<b<<std::endl;
-		std::cout<<"would have allocated "<<fBufferSize<<" bytes of buffer for board "<<b<<std::endl;
-		free(fBuffer);
-		if(fDebug) std::cout<<"done with allocating for board "<<b<<std::endl;
+#endif
+		if(fDebug) std::cout<<"done with board "<<b<<std::endl;
 	} // for(int b = 0; b < fSettings->NumberOfBoards(); ++b)
-	fBuffer = static_cast<char*>(malloc(fMaxBufferSize));
-	std::cout<<"allocated "<<fMaxBufferSize<<" bytes of buffer for all boards"<<std::endl;
 	fSetupDone = true;
 	std::cout<<"Setup of VX1730 finished!"<<std::endl;
 }
@@ -143,11 +142,12 @@ void CaenDigitizer::Setup()
 CaenDigitizer::~CaenDigitizer()
 {
 	// only need to free or close anything if we did a setup already
-	if(fSetupDone) {
-		CAEN_DGTZ_FreeReadoutBuffer(&fBuffer);
-		for(int b = 0; b < fSettings->NumberOfBoards(); ++b) {
-			CAEN_DGTZ_CloseDigitizer(fHandle[b]);
-		}
+	for(int b = 0; b < fSettings->NumberOfBoards() && fSetupDone; ++b) {
+		CAEN_DGTZ_FreeReadoutBuffer(&fBuffer[b]);
+#ifdef USE_WAVEFORMS
+		CAEN_DGTZ_FreeDPPWaveforms(fHandle[b], reinterpret_cast<void*>(fWaveforms[b]));
+#endif
+		CAEN_DGTZ_CloseDigitizer(fHandle[b]);
 	}
 }
 
@@ -177,13 +177,6 @@ void CaenDigitizer::StartAcquisition(HNDLE hDB)
 	} else {
 		std::cout<<"Calibration is done!"<<std::endl;
 	}
-	for(i = 0; i < 100 && !BoardsReady(); ++i) {
-	}
-	if(i == 100) {
-		std::cout<<"gave up waiting for boards to be ready after "<<100<<" tries"<<std::endl;
-	} else {
-		std::cout<<"Boards are ready!"<<std::endl;
-	}
 
 	if(fSettings->RawOutput()) {
 		// open raw output file
@@ -193,6 +186,7 @@ void CaenDigitizer::StartAcquisition(HNDLE hDB)
 	for(int b = 0; b < fSettings->NumberOfBoards(); ++b) {
 		CAEN_DGTZ_SWStartAcquisition(fHandle[b]);
 	}
+	std::cout<<"started acquisition"<<std::endl;
 }
 
 void CaenDigitizer::StopAcquisition()
@@ -255,6 +249,7 @@ void CaenDigitizer::CalibrationStatus()
 				uint32_t	address = 0x1088 + 0x100*ch;
 				uint32_t data = 0;
 				CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
+				std::cout<<"status of handle "<<fHandle[b]<<", address "<<address<<" is 0x"<<std::hex<<data<<std::dec<<std::endl;
 				if((data&0x8) != 0x8) {
 					std::cout<<"-";
 				} else {
@@ -284,22 +279,6 @@ bool CaenDigitizer::CalibrationDone()
 	return true;
 }
 
-bool CaenDigitizer::BoardsReady()
-{
-	uint32_t address = 0x8104; // acquisition status
-	uint32_t data;
-
-	// check board ready
-	for(int b = 0; b < fSettings->NumberOfBoards(); ++b) {
-		CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
-		if((data&0x100) == 0x0) {
-			// bit 8 is not set = board not ready
-			return false;
-		}
-	}
-	return true;
-}
-
 INT CaenDigitizer::DataReady()
 {
 	// if the setup hasn't been done we can't get any data
@@ -307,18 +286,32 @@ INT CaenDigitizer::DataReady()
 		return FALSE;
 	}
 
-	uint32_t address = 0x814c; // acquisition status
-	uint32_t data;
+	int errorCode = 0;
 
-	// check data ready
+	// read data
+	bool gotData = false;
 	for(int b = 0; b < fSettings->NumberOfBoards(); ++b) {
-		CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
-		if(data != 0x0) {
-			// data represents the event size
-			return TRUE;
+		errorCode = CAEN_DGTZ_ReadData(fHandle[b], CAEN_DGTZ_SLAVE_TERMINATED_READOUT_MBLT, fBuffer[b], &fBufferSize[b]);
+		if(errorCode != 0) {
+			++fReadError[b];
+			if(fReadError[b]%100 == 0) {
+				al_trigger_alarm("Caen", "Error reading data from board", "CaenAlarm", "board error", AT_INTERNAL);
+				cm_msg(MERROR, "DataReady", "Error %d when reading data from board %d (%d. error)", errorCode, b, fReadError[b]);
+			}
+			// sleep for a microsecond
+			nanosleep((const struct timespec[]){{0, 1000}}, (struct timespec*) NULL);
+			return FALSE;
+		}
+		if(fBufferSize[b] > 0) {
+			if(fDebug) {
+				std::cout<<"Read "<<fBufferSize[b]<<" bytes from board "<<b<<std::endl;
+			}
+			gotData = true;
 		}
 	}
 
+	// this is necessary because TRUE and FALSE are not booleans ...
+	if(gotData) return TRUE;
 	return FALSE;
 }
 
@@ -330,52 +323,70 @@ bool CaenDigitizer::ReadData(char* event, const int& maxSize, uint32_t& eventsRe
 	//
 	// no checks for valid events done, nor any identification of board/channel???
 	DWORD* data;
-	CAENComm_ErrorCode errorCode;
-	uint32_t address = 0x814c; // acquisition status
-	uint32_t nofWords = 0;
-	int wordsRead = 0;
-	int totalWordsRead = 0;
-	eventsRead = 0;
+	//check if we have any data
+	int totalSize = 0;
 	for(int b = 0; b < fSettings->NumberOfBoards(); ++b) {
-		// check event size (number of 32-bit words)
-		CAEN_DGTZ_ReadRegister(fHandle[b], address, &nofWords);
-		if(4*nofWords > static_cast<uint32_t>(maxSize)) {
-			cm_msg(MERROR, "ReadData", "Can't fit %d words (%d bytes) into maximum size of %d bytes, discarding this buffer!", nofWords, 4*nofWords, maxSize);
+		if(fBufferSize[b] >= 0) {
+			totalSize += fBufferSize[b];
+		} else {
+			std::cerr<<"buffer size of board "<<b<<" is negative: "<<fBufferSize[b]<<std::endl;
+			fBufferSize[b] = 0;
+		}
+	}
+	if(totalSize == 0) {
+		std::cout<<__PRETTY_FUNCTION__<<": no data"<<std::endl;
+		return false; // had no data, so there is none left either
+	}
+	const char* bankName;
+	//check if we can copy all events from fBuffer to data
+	int sizeRead = 0;
+	eventsRead = 0;
+	int b;
+	for(b = 0; b < fSettings->NumberOfBoards(); ++b) {
+		if(fBufferSize[b] == 0) continue;
+		if(fBufferSize[b] > static_cast<size_t>(maxSize)) {
+			std::cout<<"Can't fit board buffer of "<<fBufferSize[b]<<" bytes into maximum size of "<<maxSize<<" bytes, discarding this buffer!"<<std::endl;
+			fBufferSize[b] = 0; // prevent us from trying/warning about this again
 			continue;
+		}
+		if(fBufferSize[b] + sizeRead > static_cast<size_t>(maxSize)) {
+			break;
 		}
 		//create bank - returns pointer to data area of bank
 		if(fFirmwareType[b] == EFirmware::kPSD) {
-			bk_create(event, "CAEN", TID_DWORD, reinterpret_cast<void**>(&data));
+			bankName = "CAEN";
 		} else if(fFirmwareType[b] == EFirmware::kPHA) {
-			bk_create(event, "CPHA", TID_DWORD, reinterpret_cast<void**>(&data));
+			bankName = "CPHA";
 		}
-		while(nofWords > 0 && errorCode == CAENComm_Success) {
-			errorCode = CAENComm_MBLTRead(fHandle[b],0, data, nofWords, &wordsRead);
-			
-			// check number of events in the data
-			uint32_t nofEvents = GetNumberOfEvents(reinterpret_cast<char*>(data), wordsRead);
-			fNofEvents[b] += nofEvents;
-			eventsRead += nofEvents;
+		bk_create(event, bankName, TID_DWORD, reinterpret_cast<void**>(&data));
+		// at this stage we know that this boards buffer will fit in the rest of the event buffer
+		//copy buffer of this board
+		std::memcpy(data, fBuffer[b], fBufferSize[b]);
+		data += fBufferSize[b]/sizeof(DWORD);
+		if(fRawOutput.is_open()) {
+			fRawOutput.write(fBuffer[b], fBufferSize[b]);
+		}
 
-			//increment pointers/counters
-			totalWordsRead += wordsRead;
-			nofWords -= wordsRead;
-			data += wordsRead;
-		}	
+
+		uint32_t nofEvents = GetNumberOfEvents(fBuffer[b], fBufferSize[b]);
+		fNofEvents[b] += nofEvents;
+		eventsRead += nofEvents;
 
 		// we're done reading this boards buffer, so we set it's size to zero
 		// to prevent copying it again if this function fails to write all board
 		// buffers into a single midas event
-		//fBufferSize[b] = 0;
+		fBufferSize[b] = 0;
+		
 
 		//close bank
 		bk_close(event, data);
 	}
 
-	//if(totalWordsRead > 0) std::cout<<"read "<<totalWordsRead<<" words"<<std::endl;
 
-	// we're reading all data,  so nothing is left?
-	return false;
+	// we only have events left in the buffers if the above loop
+	// was broken out of
+
+	return (b != fSettings->NumberOfBoards());
 }
 
 uint32_t CaenDigitizer::GetNumberOfEvents(char* buffer, uint32_t bufferSize)
@@ -458,11 +469,12 @@ void CaenDigitizer::ProgramPsdDigitizer(int b)
 	if(fDebug) std::cout<<"programming digitizer "<<b<<std::endl;
 	CAEN_DGTZ_ErrorCode errorCode;
 
-	// not sure if this is needed?
+   // not sure if this is needed?
 	errorCode = CAEN_DGTZ_Reset(fHandle[b]);
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPsdDigitizer", "Error %d when resetting digitizer %d", errorCode, b);
+	//	throw std::runtime_error(format("Error %d when resetting digitizer", errorCode));
+		cm_msg(MINFO, "ProgramDigitizer", "Error %d when resetting digitizer %d", errorCode, b);
 		errorCode = CAEN_DGTZ_ErrorCode(0);
 	}
 
@@ -472,7 +484,8 @@ void CaenDigitizer::ProgramPsdDigitizer(int b)
 	//std::cout<<"acquisition mode "<<CAEN_DGTZ_GetDPPAcquisitionMode(fHandle[b], &mode, &param)<<": mode "<<mode<<", param "<<param<<std::endl;
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPsdDigitzer", "Error %d when setting DPP acquisition mode for digitizer %d", errorCode, b);
+		//throw std::runtime_error(format("Error %d when setting DPP acquisition mode", errorCode));
+		cm_msg(MINFO, "ProgramDigitizer", "Error %d when setting DPP acquisition mode for digitizer %d", errorCode, b);
 		errorCode = CAEN_DGTZ_ErrorCode(0);
 	}
 
@@ -481,21 +494,24 @@ void CaenDigitizer::ProgramPsdDigitizer(int b)
 	errorCode = CAEN_DGTZ_SetIOLevel(fHandle[b], fSettings->IOLevel(b));
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPsdDigitzer", "Error %d when setting IO level for digitizer %d", errorCode, b);
+		//throw std::runtime_error(format("Error %d when setting IO level", errorCode));
+		cm_msg(MINFO, "ProgramDigitizer", "Error %d when setting IO level for digitizer %d", errorCode, b);
 		errorCode = CAEN_DGTZ_ErrorCode(0);
 	}
 
 	errorCode = CAEN_DGTZ_SetExtTriggerInputMode(fHandle[b], fSettings->TriggerMode(b));
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPsdDigitzer", "Error %d when setting external trigger DPP events for digitizer %d", errorCode, b);
+		//throw std::runtime_error(format("Error %d when setting external trigger DPP events", errorCode));
+		cm_msg(MINFO, "ProgramDigitizer", "Error %d when setting external trigger DPP events for digitizer %d", errorCode, b);
 		errorCode = CAEN_DGTZ_ErrorCode(0);
 	}
 
 	errorCode = CAEN_DGTZ_SetChannelEnableMask(fHandle[b], fSettings->ChannelMask(b));
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPsdDigitzer", "Error %d when setting channel mask for digitizer %d", errorCode, b);
+		//throw std::runtime_error(format("Error %d when setting channel mask", errorCode));
+		cm_msg(MINFO, "ProgramDigitizer", "Error %d when setting channel mask for digitizer %d", errorCode, b);
 		errorCode = CAEN_DGTZ_ErrorCode(0);
 	}
 
@@ -505,14 +521,16 @@ void CaenDigitizer::ProgramPsdDigitizer(int b)
 	errorCode = CAEN_DGTZ_SetRunSynchronizationMode(fHandle[b], fSettings->RunSync(b)); // change to settings (was CAEN_DGTZ_RUN_SYNC_Disabled)
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPsdDigitzer", "Error %d when setting run synchronization for digitizer %d", errorCode, b);
+		//throw std::runtime_error(format("Error %d when setting run synchronization", errorCode));
+		cm_msg(MINFO, "ProgramDigitizer", "Error %d when setting run synchronization for digitizer %d", errorCode, b);
 		errorCode = CAEN_DGTZ_ErrorCode(0);
 	}
 
 	errorCode = CAEN_DGTZ_SetDPPParameters(fHandle[b], fSettings->ChannelMask(b), const_cast<void*>(static_cast<const void*>(fSettings->ChannelPsdParameter(b))));
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPsdDigitzer", "Error %d when setting dpp parameters for digitizer %d", errorCode, b);
+		//throw std::runtime_error(format("Error %d when setting dpp parameters", errorCode));
+		cm_msg(MINFO, "ProgramDigitizer", "Error %d when setting dpp parameters for digitizer %d", errorCode, b);
 		errorCode = CAEN_DGTZ_ErrorCode(0);
 	}
 
@@ -552,11 +570,24 @@ void CaenDigitizer::ProgramPsdDigitizer(int b)
 				data = (data & ~0xfff) | (fSettings->CfdParameters(b, ch) & 0xfff);
 				CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
 			}
+			// reject overrange event
+			//address = 0x1080 + ch*0x100;
+			//CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
+			//data |= 0x20000000; // no mask necessary, we just set one bit
+			//CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
 			// write extended TS, flags, and fine TS (from CFD) to extra word
 			address = 0x1084 + ch*0x100;
 			CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
 			data = (data & ~0x700) | 0x200;
 			CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+			// bit 11: 0 - disable, 1 - enable use of smoothed signal for charge integration
+			// bits 12-15: 0 - no smoothing, 1 - 2 samples, 2 - 4 samples, 3 - 8 samples, 4 - 16 samples
+			//address = 0x1084 + ch*0x100;
+			//CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
+			//data = (data & ~0xf800) | 0x2000;
+			//CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
 
 			// if input range flag is set we use 0.5 Vpp instead of 2 Vpp range
 			address = 0x1028 + ch*0x100;
@@ -585,13 +616,25 @@ void CaenDigitizer::ProgramPsdDigitizer(int b)
 				CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
 				//std::cout<<"zs thres. - 0x"<<std::hex<<address<<" wrote 0x"<<data<<std::dec<<std::endl;
 			}
+
+			// print addresses 0x1n80 and 0x1n84
+			//address = 0x1080 + ch*0x100;
+			//CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
+			//std::cout<<std::hex<<"0x"<<address<<": 0x"<<data<<std::dec<<std::endl;
+			//std::cout<<std::endl;
+			//address = 0x1084 + ch*0x100;
+			//CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
+			//std::cout<<std::hex<<"0x"<<address<<": 0x"<<data<<std::dec<<std::endl;
+			// current result with CFD, zero suppression enabled, extra CFD word, 4 sample smoothing, and over range rejection:
+			// 0x1080: 0x22430041
+			// 0x1084: 0x2207
 		}
 	}
 
 	errorCode = CAEN_DGTZ_SetDPPEventAggregation(fHandle[b], fSettings->EventAggregation(b), 0);
 
 	// doesn't work??? we set it now by hand below
-	errorCode = CAEN_DGTZ_SetDPP_VirtualProbe(fHandle[b], ANALOG_TRACE_2,  CAEN_DGTZ_DPP_VIRTUALPROBE_CFD);
+	errorCode = CAEN_DGTZ_SetDPP_VirtualProbe(fHandle[b], ANALOG_TRACE_2,  CAEN_DGTZ_DPP_VIRTUALPROBE_None); // changed from _CFD to _None for OGS detectors
 
 	// this has been confirmed to work
 	errorCode = CAEN_DGTZ_SetDPP_VirtualProbe(fHandle[b], DIGITAL_TRACE_1, CAEN_DGTZ_DPP_DIGITALPROBE_Gate);
@@ -601,7 +644,7 @@ void CaenDigitizer::ProgramPsdDigitizer(int b)
 	// manually set analog traces to input and cfd
 	address = 0x8000;
 	CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
-	data = (data & ~0x3000) | 0x2000;
+	data = (data & ~0x3000) | 0x0000; // changed from 0x2000 to 0x0000 for OGS detectors
 	CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
 
 	// use external clock - this seems to be safer if done at the end of setting all parameters ???
@@ -636,36 +679,31 @@ void CaenDigitizer::ProgramPhaDigitizer(int b)
 	errorCode = CAEN_DGTZ_Reset(fHandle[b]);
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPhaDigitizer", "Error %d when resetting digitizer %d", errorCode, b);
-		errorCode = CAEN_DGTZ_ErrorCode(0);
+		throw std::runtime_error(format("Error %d when resetting digitizer", errorCode));
 	}
 
 	errorCode = CAEN_DGTZ_SetDPPAcquisitionMode(fHandle[b], fSettings->AcquisitionMode(b), CAEN_DGTZ_DPP_SAVE_PARAM_EnergyAndTime);
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPhaDigitzer", "Error %d when setting DPP acquisition mode for digitizer %d", errorCode, b);
-		errorCode = CAEN_DGTZ_ErrorCode(0);
+		throw std::runtime_error(format("Error %d when setting DPP acquisition mode", errorCode));
 	}
 
 	errorCode = CAEN_DGTZ_SetIOLevel(fHandle[b], fSettings->IOLevel(b));
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPhaDigitzer", "Error %d when setting IO level for digitizer %d", errorCode, b);
-		errorCode = CAEN_DGTZ_ErrorCode(0);
+		throw std::runtime_error(format("Error %d when setting IO level", errorCode));
 	}
 
 	errorCode = CAEN_DGTZ_SetExtTriggerInputMode(fHandle[b], fSettings->TriggerMode(b));
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPhaDigitzer", "Error %d when setting external trigger DPP events for digitizer %d", errorCode, b);
-		errorCode = CAEN_DGTZ_ErrorCode(0);
+		throw std::runtime_error(format("Error %d when setting external trigger DPP events", errorCode));
 	}
 
 	errorCode = CAEN_DGTZ_SetChannelEnableMask(fHandle[b], fSettings->ChannelMask(b));
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPhaDigitzer", "Error %d when setting channel mask for digitizer %d", errorCode, b);
-		errorCode = CAEN_DGTZ_ErrorCode(0);
+		throw std::runtime_error(format("Error %d when setting channel mask", errorCode));
 	}
 
 	// disabled turns acquisition mode back to SW controlled
@@ -674,19 +712,63 @@ void CaenDigitizer::ProgramPhaDigitizer(int b)
 	errorCode = CAEN_DGTZ_SetRunSynchronizationMode(fHandle[b], CAEN_DGTZ_RUN_SYNC_Disabled); // change to settings
 
 	if(errorCode != 0) {
-		cm_msg(MINFO, "ProgramPhaDigitzer", "Error %d when setting run synchronization for digitizer %d", errorCode, b);
-		errorCode = CAEN_DGTZ_ErrorCode(0);
+		throw std::runtime_error(format("Error %d when setting run sychronization", errorCode));
 	}
 
 	errorCode = CAEN_DGTZ_SetDPPParameters(fHandle[b], fSettings->ChannelMask(b), const_cast<void*>(static_cast<const void*>(fSettings->ChannelPhaParameter(b))));
 
-	//write some special registers directly, enable EXTRA word
-	address = 0x8000;
-	CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
-	data = (data & ~0xfeffff) | 0x7E3910; //record waveform with dual trace(trapezoid and input) + holdoff digital, pha settings	
-	//data = (data & ~0xeffff) | 0xE8910; //record waveform with dual trace(input and trapezoid-baseline) + peaking digital, pha settings	
-	//	       	data = (data & ~0xeffff) | 0xE3910; //record waveform with dual trace(trapezoid and input) + peaking digital, pha settings
-	//	data = (data & ~0xeffff) | 0xE2910; //record waveform with dual trace(rc-cr2 and input) + peaking digital, pha settings	
+	address = 0x10A0;
+	data = 0x00000000; 
+	CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+	address = 0x10D4;
+	data = 0x0000000A; 
+	CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+	address = 0xEF00;
+	data = 0x00000010; 
+	CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+	/*
+	   address = 0xEF20;
+	   data = 0xAAAAAAAA; 
+	   CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+	   address = 0xEF1C;
+	   data = 0x00000040; 
+	   CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+	   address = 0xEF18;
+	   data = 0x00000000; 
+	   CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+	   address = 0xEF14;
+	   data = 0x000000DD; 
+	   CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+	   address = 0xEF10;
+	   data = 0x00000000; 
+	   CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+	   address = 0xEF0C;
+	   data = 0x000000AA; 
+	   CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+	   */
+
+	address = 0x811C;
+	data = 0x00008000; 
+	CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+	//Enable Channel Mask
+	address = 0x8120;
+	data = 0x000000FF; 
+	CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+	/*
+	   address = 0x8168;
+	   data = 0x00000001; 
+	   CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+	   */
+	address = 0x81A0;
+	data = 0x00000000; 
 	CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
 
 	for(int ch = 0; ch < fSettings->NumberOfChannels(); ++ch) {
@@ -702,8 +784,32 @@ void CaenDigitizer::ProgramPhaDigitizer(int b)
 
 			errorCode = CAEN_DGTZ_SetChannelPulsePolarity(fHandle[b], ch, fSettings->PulsePolarity(b, ch));
 
-			// if input range flag is set we use 0.5 Vpp instead of 2 Vpp range
-			address = 0x1028 + ch*0x100;
+			//if(fSettings->EnableCfd(b, ch)) {
+			//  if(fDebug) std::cout<<"enabling CFD on channel "<<ch<<std::endl;
+			//  // enable CFD mode
+			//  address = 0x1080 + ch*0x100;
+			//  CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
+			//  data |= 0x40; // no mask necessary, we just set one bit
+			//  CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+			//  // set CFD parameters
+			//  address = 0x103c + ch*0x100;
+			//  CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
+			//  data = (data & ~0xfff) | fSettings->CfdParameters(b, ch);
+			//  CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+
+			//}
+			// write extended TS, flags, and fine TS (from CFD) to extra word
+			//address = 0x1084 + ch*0x100;
+			//CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
+			//data = (data & ~0x700) | 0x200;
+			//CAEN_DGTZ_WriteRegister(fHandle[b], address, data);
+			/*
+
+			   if(fSettings->EnableCoinc(b, ch)){
+			   std::cout << "Coincidences enabled" << std::endl;
+			// enable EXTRA word with 0x20000 and enable coincidence trigger with 0x4 in register 8000     
+			address = 0x8000;
 			CAEN_DGTZ_ReadRegister(fHandle[b], address, &data);
 			if(fSettings->InputRange(b, ch)) {
 				data = (data & ~0x1) | 0x1;

@@ -16,7 +16,7 @@
 #include "CaenDigitizer.hh"
 
 #define STRING_LEN      256 // typical length for temporary strings
-#define MAX_EVT_SIZE 1000000 // was originally 500000
+#define MAX_EVT_SIZE 4000000 // was originally 500000 (max is 4194304)
 
 #ifdef __cplusplus
 extern "C" {
@@ -84,6 +84,9 @@ int frontend_init()
 	gDigitizer->PrintEventsPerAggregate();
 	gDigitizer->PrintAggregatesPerBlt();
 
+	cm_set_transition_sequence(TR_START, 400);
+   cm_set_transition_sequence(TR_STOP, 400);
+
    printf("init done\n");
    return SUCCESS;
 }
@@ -93,8 +96,8 @@ int begin_of_run(int run_number, char *error)
 	nofCaenEvents = 0;
    if(gDigitizer != nullptr) gDigitizer->StartAcquisition(hDB);
 
-	gDigitizer->PrintEventsPerAggregate();
-	gDigitizer->PrintAggregatesPerBlt();
+	//gDigitizer->PrintEventsPerAggregate();
+	//gDigitizer->PrintAggregatesPerBlt();
 
    printf("End of BOR\n");
    return SUCCESS;
@@ -127,6 +130,7 @@ INT poll_event(INT source, INT count, BOOL test)
 			caen_data_available = gDigitizer->DataReady();
 		}
       if( caen_data_available ){ break; }
+		ss_sleep(1);// sleep one millisecond
    }
    return( (caen_data_available) && !test );
 }

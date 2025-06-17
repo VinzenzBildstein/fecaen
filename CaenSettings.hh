@@ -38,11 +38,11 @@ public:
 	void EnableCfd(const bool& val) { fEnableCfd = val; }
 	void CfdParameters(const uint32_t& val) { fCfdParameters = val; }
 	void EnableCoinc(const bool& val) { fEnableCoinc = val; }
-	//void EnableCoincTrig(const bool& val) { fEnableCoincTrig = val; }
+	void EnableCoincTrig(const bool& val) { fEnableCoincTrig = val; }
 	void EnableBaseline(const bool& val) { fEnableBaseline = val; }
 	void CoincWindow(const uint32_t& val) { fCoincWindow = val; }
 	void CoincLatency(const uint32_t& val) { fCoincLatency = val; }
-	void InputRange(const bool& val) { fInputRange = val; }
+	void InputRange(const bool& val) { val?fInputRange = 1:fInputRange = 0; }
 	void EnableZeroSuppression(const bool& val) { fEnableZeroSuppression = val; }
 	void ChargeThreshold(const uint32_t& val) { fChargeThreshold = val; }
 
@@ -54,11 +54,11 @@ public:
 	bool EnableCfd() const { return fEnableCfd; }
 	uint32_t CfdParameters() const { return fCfdParameters; }
 	bool EnableCoinc() const { return fEnableCoinc; }
-	//bool EnableCoincTrig() const { return fEnableCoincTrig; }
+	bool EnableCoincTrig() const { return fEnableCoincTrig; }
 	bool EnableBaseline() const { return fEnableBaseline; }
 	uint32_t CoincWindow() const { return fCoincWindow; }
 	uint32_t CoincLatency() const { return fCoincLatency; }
-	bool InputRange() const { return fInputRange; }
+	bool InputRange() const { return fInputRange != 0; }
 	bool EnableZeroSuppression() const { return fEnableZeroSuppression; }
 	uint32_t ChargeThreshold() const { return fChargeThreshold; }
 
@@ -73,11 +73,11 @@ private:
 	bool fEnableCfd;
 	uint16_t fCfdParameters;
   	bool fEnableCoinc;
-  	//bool fEnableCoincTrig;
+  	bool fEnableCoincTrig;
   	bool fEnableBaseline;
   	uint32_t fCoincWindow;
   	uint32_t fCoincLatency;
-	bool fInputRange;
+	uint32_t fInputRange;
 	bool fEnableZeroSuppression;
 	uint32_t fChargeThreshold;
 };
@@ -137,7 +137,7 @@ public:
 	void EnableCfd(const int& i, const bool& val) { fChannelSettings.at(i).EnableCfd(val); }
 	void CfdParameters(const int& i, const uint32_t& val) { fChannelSettings.at(i).CfdParameters(val); }
 	void EnableCoinc(const int& i, const bool& val) { fChannelSettings.at(i).EnableCoinc(val); }
-	//void EnableCoincTrig(const int& i, const bool& val) { fChannelSettings.at(i).EnableCoincTrig(val); }
+	void EnableCoincTrig(const int& i, const bool& val) { fChannelSettings.at(i).EnableCoincTrig(val); }
 	void EnableBaseline(const int& i, const bool& val) { fChannelSettings.at(i).EnableBaseline(val); }
 	void CoincWindow(const int& i, const uint32_t& val) { fChannelSettings.at(i).CoincWindow(val); }
 	void CoincLatency(const int& i, const uint32_t& val) { fChannelSettings.at(i).CoincLatency(val); }
@@ -153,7 +153,7 @@ public:
 	bool EnableCfd(const int& i) const { return fChannelSettings.at(i).EnableCfd(); }
 	uint32_t CfdParameters(const int& i) const { return fChannelSettings.at(i).CfdParameters(); }
 	bool EnableCoinc(const int& i) const { return fChannelSettings.at(i).EnableCoinc(); }
-	//bool EnableCoincTrig(const int& i) const { return fChannelSettings.at(i).EnableCoincTrig(); }
+	bool EnableCoincTrig(const int& i) const { return fChannelSettings.at(i).EnableCoincTrig(); }
 	bool EnableBaseline(const int& i) const { return fChannelSettings.at(i).EnableBaseline(); }
 	uint32_t CoincWindow(const int& i) const { return fChannelSettings.at(i).CoincWindow(); }
 	uint32_t CoincLatency(const int& i) const { return fChannelSettings.at(i).CoincLatency(); }
@@ -222,7 +222,7 @@ public:
 	bool EnableCfd(int i, int j) const { return fBoardSettings.at(i).EnableCfd(j); }
 	uint16_t CfdParameters(int i, int j) const { return fBoardSettings.at(i).CfdParameters(j); }
 	bool EnableCoinc(int i, int j) const { return fBoardSettings.at(i).EnableCoinc(j); }
-	//bool EnableCoincTrig(int i, int j) const { return fBoardSettings.at(i).EnableCoincTrig(j); }
+	bool EnableCoincTrig(int i, int j) const { return fBoardSettings.at(i).EnableCoincTrig(j); }
 	bool EnableBaseline(int i, int j) const { return fBoardSettings.at(i).EnableBaseline(j); }
 	uint32_t CoincWindow(int i, int j) const { return fBoardSettings.at(i).CoincWindow(j); }
 	uint32_t CoincLatency(int i, int j) const { return fBoardSettings.at(i).CoincLatency(j); }
