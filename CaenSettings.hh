@@ -108,7 +108,8 @@ public:
 	void RunSync(const CAEN_DGTZ_RunSyncMode_t& val) { fRunSync = val; }
 	void EventAggregation(const int& val) { fEventAggregation = val; }
 	void TriggerMode(const CAEN_DGTZ_TriggerMode_t& val) { fTriggerMode = val; }
-	void ChannelParameter(const CAEN_DGTZ_DPP_PSD_Params_t& val) { fChannelParameter = val; }
+	void ChannelPsdParameter(const CAEN_DGTZ_DPP_PSD_Params_t& val) { fChannelPsdParameter = val; }
+	void ChannelPhaParameter(const CAEN_DGTZ_DPP_PHA_Params_t& val) { fChannelPhaParameter = val; }
 	void PortNumber(const int& val) { fPortNumber = val; }
 	void DeviceNumber(const int& val) { fDeviceNumber = val; }
 
@@ -123,7 +124,8 @@ public:
 	CAEN_DGTZ_RunSyncMode_t RunSync() const { return fRunSync; }
 	int EventAggregation() const { return fEventAggregation; }
 	CAEN_DGTZ_TriggerMode_t TriggerMode() const { return fTriggerMode; }
-	const CAEN_DGTZ_DPP_PSD_Params_t* ChannelParameter() const { return &fChannelParameter; }
+	const CAEN_DGTZ_DPP_PSD_Params_t* ChannelPsdParameter() const { return &fChannelPsdParameter; }
+	const CAEN_DGTZ_DPP_PHA_Params_t* ChannelPhaParameter() const { return &fChannelPhaParameter; }
 	int PortNumber() const { return fPortNumber; }
 	int DeviceNumber() const { return fDeviceNumber; }
 
@@ -174,7 +176,8 @@ private:
 	CAEN_DGTZ_RunSyncMode_t fRunSync; //enum
 	int fEventAggregation;
 	CAEN_DGTZ_TriggerMode_t fTriggerMode; //enum
-	CAEN_DGTZ_DPP_PSD_Params_t fChannelParameter;
+	CAEN_DGTZ_DPP_PSD_Params_t fChannelPsdParameter;
+	CAEN_DGTZ_DPP_PHA_Params_t fChannelPhaParameter;
 	std::vector<ChannelSettings> fChannelSettings;
 };
 
@@ -207,7 +210,8 @@ public:
 	CAEN_DGTZ_RunSyncMode_t RunSync(int i) const { return fBoardSettings.at(i).RunSync(); }
 	int EventAggregation(int i) const { return fBoardSettings.at(i).EventAggregation(); }
 	CAEN_DGTZ_TriggerMode_t TriggerMode(int i) const { return fBoardSettings.at(i).TriggerMode(); }
-	const CAEN_DGTZ_DPP_PSD_Params_t* ChannelParameter(int i) const { return fBoardSettings.at(i).ChannelParameter(); }
+	const CAEN_DGTZ_DPP_PSD_Params_t* ChannelPsdParameter(int i) const { return fBoardSettings.at(i).ChannelPsdParameter(); }
+	const CAEN_DGTZ_DPP_PHA_Params_t* ChannelPhaParameter(int i) const { return fBoardSettings.at(i).ChannelPhaParameter(); }
 	EBoardType BoardType(int i) const { return fBoardSettings.at(i).BoardType(); }
 
 	//channel parameters
